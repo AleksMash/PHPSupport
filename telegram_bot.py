@@ -1,25 +1,33 @@
 import telebot
 import time
 
-
 from telebot import types
+from telebot.util import quick_markup
 from environs import Env
-from aiogram.utils.markdown import hlink
 
+import db
+
+CLIENT_GREET = "Привет тебе, дорогой клиент!"
+EXEC_GREET = "Привет тебе, дорогой исполнитель!"
+ADMIN_GREET = "Привет тебе, о великий Админ!"
 
 env = Env()
 env.read_env()
 
-tg_clients_token = env('TG_CLIENTS_TOKEN')
+tg_clients_token = env('TG_BOT_TOKEN')
 client_bot = telebot.TeleBot(token=tg_clients_token)
 
-client_base = [933137433, ]
-contractor_base = [9331374330, 205520898]
-
-client_application = []
-link = hlink('ПИПИ', 'https://pypi.org/project/pyTelegramBotAPI/#description')
-
-applications = [{'key': 123, 'text': 'Test1', 'appl': link}, {'key': 1234, 'text': 'Test2', 'appl': link}]
+markup_client = quick_markup({
+    'Мои заявки': {'callback_data': 'apps_to_client'},
+    'Подать заявку':{'callback_data': 'apply'}
+})
+markup_executor = quick_markup({
+    'Список заказов': {'callback_data': 'apps_to_exec'},
+    'Условия оплаты': {'callback_data': 'salary'},
+    'Что я делаю': {'callback_data': 'active_task'},
+    'Задать вопрос':{'callback_data': 'ask_question'},
+    'Сдать работу': {'callback_data': 'work_done'}
+})
 
 
 def get_time_conv():
@@ -27,87 +35,42 @@ def get_time_conv():
 
 
 @client_bot.message_handler(commands=['start'])
-def start(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn1 = types.KeyboardButton('Авторизация')
-    markup.add(btn1)
-    client_bot.send_message(message.chat.id, 'Я на связи. Нажми на кнопку Авторизация ...', reply_markup=markup)
+def start(message: telebot.types.Message):
+    print(message.text)
+    access, type = db.check_access_by_tgname(message.from_user.username)
+    if access==-1:
+        client_bot.send_message(message.chat.id, 'Вы не зарегистрированы в системе.')
+    elif access==0 and type == db.UT_CLIENT:
+        client_bot.send_message(message.chat.id, 'Ваша подписка окончилась, новые заявки создать нельзя.'
+                                                 'Однако можно отслеживать ранее поданные заявки')
+    elif access==1:
+        if type==0:
+            client_bot.send_message(message.chat.id, ADMIN_GREET)
+            client_bot.send_message(message.chat.id, "Меню админа в разработке")
+        elif type==1:
+            client_bot.send_message(message.chat.id, CLIENT_GREET)
+            client_bot.send_message(message.chat.id, "Основное меню:", reply_markup=markup_client)
+        elif type==2:
+            client_bot.send_message(message.chat.id, EXEC_GREET)
+            client_bot.send_message(message.chat.id, "Основное меню", reply_markup=markup_executor)
 
 
-@client_bot.message_handler(func=lambda message: message.chat.id not in client_base and message.chat.id not in contractor_base)
-def get_payment_verification(message):
-    client_bot.send_message(message.chat.id, 'У вас нет доступа к боту')
-    print(message.chat.id)
+#сделать обработчики других команд, описанных в инфо
+
+#сделать обработчик текстовый сообщений (ввод инфы от пользователя) c ветвлением на основании алгоритма,
+#либо сделать как показано здесь: https://habr.com/ru/post/442800/ - см. раздел ветки сообщений.
 
 
-@client_bot.message_handler(func=lambda message: message.chat.id in client_base)
-def get_client_application(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn1 = types.KeyboardButton('Сделать заявку')
-    btn2 = types.KeyboardButton('Мои заявки')
-    markup.add(btn1, btn2)
-    order_id = 1000
-
-    if message.text == 'Авторизация':
-        client_bot.send_message(message.chat.id, 'Для начала работы нажмите на кнопку Сделать заявку', reply_markup=markup)
-
-        us_id = message.chat.id
-        us_name = message.from_user.first_name
-        us_sname = message.from_user.last_name
-        username = message.from_user.username
-        print(us_id)
-        print(us_name)
-        print(us_sname)
-        print(username)
-
-    elif message.text == 'Сделать заявку':
-        client_bot.send_message(message.chat.id, '''Я на связи. Для решения вашего вопроса, опишите его.
-        Примеры:
-        * Здравствуйте, нужно добавить в интернет-магазин фильтр товаров по цвету
-        * Здравствуйте, нужно выгрузить товары с сайта в Excel-таблице
-        * Здравствуйте, нужно загрузить 450 SKU на сайт из Execel таблицы
-        * Здравствуйте, хочу провести на сайте акцию, хочу разместить баннер и добавить функционал, чтобы впридачу к акционным товарам выдавался приз
-        ''')
-
-    elif message.text == 'Мои заявки':
-        client_bot.send_message(message.chat.id, 'Ваши заявки:')
-
-    else:
-        client_application.append(message.text)
-
-        application_date = get_time_conv()(message.date)
-        order_id += 1
-        client_bot.send_message(message.chat.id, f'Заявка #{order_id} передана в работу {application_date}, в течении дня с вами свяжется подрядчик')
-
-        print(client_application)
-        print(application_date)
+@client_bot.callback_query_handler(func=lambda call: True)
+def callback_inline(call):
+    print(call.data)
+    #здесь ведем обработку нажатий кнопок.
+    #имеем ввиду что при ответе на кнопки некоторые сообщения
+    #оснащаются другими кнопками которые также обрабатываются здесь,
+    #либо для них надо сделать индивидуальные обработчики .... решить.
 
 
-@client_bot.message_handler(func=lambda message: message.chat.id in contractor_base)
-def get_client_application(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn1 = types.KeyboardButton("Cписок заказов")
-    btn2 = types.KeyboardButton("Что я делаю")
-    btn3 = types.KeyboardButton("Условия оплаты")
-    btn4 = types.KeyboardButton("Выполнено заказов")
-    markup.add(btn1, btn2, btn3, btn4)
 
-    if message.text == 'Авторизация':
-        client_bot.send_message(message.chat.id, 'Для начала работы нажмите на кнопку Спиcок заказов', reply_markup=markup)
-
-        us_id = message.chat.id
-        us_name = message.from_user.first_name
-        us_sname = message.from_user.last_name
-        username = message.from_user.username
-        print(us_id)
-        print(us_name)
-        print(us_sname)
-        print(username)
-
-    if message.text == 'Cписок заказов':
-        client_bot.send_message(message.chat.id, 'Список заказов: ')
-        for application in applications:
-            client_bot.send_message(message.chat.id, application['text'], parse_mode='HTML')
 
 
 client_bot.polling(none_stop=True, interval=0)
