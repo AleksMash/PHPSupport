@@ -225,5 +225,84 @@ def get_order_exec_chat(order_id):
     return row['ex_chat_id']
 
 
-if __name__=='__main__':
+def get_list_users(user_group):
+    """retrieve all executors/clients"""
+    cur: sqlite3.Cursor = con.execute(
+        f'select * from users where user_group={user_group}'
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def get_all_users():
+    cur: sqlite3.Cursor = con.execute(
+        f'select * from users'
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def get_all_orders():
+    cur: sqlite3.Cursor = con.execute(
+        f'select * from orders'
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def change_user_access(tg_name, access):
+    cur = con.execute(f'UPDATE users SET access = {access} WHERE tg_name LIKE "{tg_name}"')
+    con.commit()
+    cur.close()
+    return cur.lastrowid
+
+
+def change_user_id(tg_name, chat_id):
+    cur = con.execute(f'UPDATE users SET chat_id = {chat_id} WHERE tg_name LIKE "{tg_name}"')
+    con.commit()
+    cur.close()
+    return cur.lastrowid
+
+
+def add_new_user(tg_name, user_group, subscription_time, access=1):
+    data = (tg_name, user_group, subscription_time, access)
+    cur = con.execute(
+        'insert into users '
+        '(tg_name, user_group, subscription_time, access) '
+        'values( ?, ?, ?, ?)', data)
+    con.commit()
+    cur.close()
+    return cur.lastrowid
+
+
+def get_exec_stat(request_date, date_now):
+    cur: sqlite3.Cursor = con.execute(
+         f'''SELECT users.tg_name, users.chat_id, orders.date_accepted, count(users.tg_name) as cnt
+            FROM orders INNER JOIN
+            users ON orders.ex_chat_id = users.chat_id
+            WHERE  orders.date_accepted BETWEEN "{request_date}" AND "{date_now}"
+            GROUP BY users.tg_name'''
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def get_clients_stat(request_date, date_now):
+    cur: sqlite3.Cursor = con.execute(
+         f'''SELECT users.tg_name, users.chat_id, count(users.tg_name) as cnt
+            FROM orders INNER JOIN
+            users ON orders.client_chat_id = users.chat_id
+            WHERE  orders.date_reg BETWEEN "{request_date}" AND "{date_now}"
+            GROUP BY users.tg_name'''
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+if __name__ == '__main__':
     pass
